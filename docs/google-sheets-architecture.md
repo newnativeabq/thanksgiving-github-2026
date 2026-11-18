@@ -5,7 +5,7 @@ GitHub Pages serves the hub over HTTPS. Google Identity Services (GIS) gives the
 ## Access and sign-in
 
 - Create a Web application OAuth client, enable the Sheets API, and authorize the origins `https://newnativeabq.github.io` and `http://localhost:8000` for production and local development respectively. The repository path is outside the origin. Use a separate test spreadsheet and localhost for development. Only the public OAuth client ID and spreadsheet ID belong in client configuration.
-- Use Restricted Drive sharing and invite named Google accounts as Editor or Viewer. Store the Sheet outside shared folders or verify inherited access, and turn off the setting that allows Editors to share or change permissions. Drive sharing is the authorization boundary. An Editor can change shared data in the Sheet itself and outside the hub. A Viewer can read all four tabs, including any identity fields. Keep names optional where possible, leave `guest_email` empty in v1, and use optional display names for attribution. These fields are guest-entered labels.
+- Use Restricted Drive sharing and invite named Google accounts as Editor or Viewer. Store the Sheet outside shared folders or verify inherited access, and turn off the setting that allows Editors to share or change permissions. Drive sharing is the authorization boundary. An Editor can change shared data in the Sheet itself and outside the hub. A Viewer can read every tab, including any identity fields. Keep names optional where possible, leave `guest_email` empty in v1, and use optional display names for attribution. These fields are guest-entered labels.
 - Offer **View with Google** using `spreadsheets.readonly` and an explicit **Enable editing** action using `spreadsheets`. A new read-only sign-in should request only its declared scope, excluding previously granted scopes. Verify the granted scope on the GIS callback. The spreadsheet scope can cover every spreadsheet the user can access, even though the hub requests only the configured spreadsheet ID.
 - Keep tokens and shared spreadsheet data in runtime memory. Starting a sign-in or scope upgrade starts a new session because the Google account chooser can select a different account. Clear prior data, drafts, and queued writes, ignore callbacks or responses from the prior session, and load and validate the Sheet before enabling writes. Use the returned expiry and ask the user to reconnect on expiry or 401. Sign-out and access loss also clear shared state. Explain the invitation requirement when an authenticated read is denied.
 - A successful read establishes read access. A Sheets token with write scope does not expose the Drive role. Keep the default viewing session read-only. In editing mode, let Google decide each write. After a permission error on a write, suspend writes and recheck read access. On successful recheck, retain the view and explain the denied edit. If the known Sheet returns 403 or 404 on recheck, clear shared data and explain how to regain access. Avoid write probes and requests for broader Drive scopes.
@@ -23,6 +23,20 @@ The owner seeds one header row per tab. Protect those headers and the preseeded 
 | `Prep_Checklist` | `step_id`, `completed`, `completed_by`, `updated_at` | Seed the 21 original Tuesday–Thursday step IDs. Update B:D for the selected step. Use native Sheet booleans. |
 
 Use UTC ISO 8601 timestamps for display and coordination, with last successful write winning for edits to the same serving target or checkoff. These timestamps come from the browser. Sheet editors can change them directly.
+
+## Feedback tickets
+
+Add a `Support_Tickets` tab to the same spreadsheet. Paste this tab-separated header into A1 and protect only row 1. Leave the ticket data rows writable by invited Editors.
+
+```text
+ticket_id	created_at	category	summary	details	status
+```
+
+The form asks guests for a category, a short summary, and optional details. It explains that anyone with Sheet access can read submissions. It does not request a name or email. Guests with Editor access can submit. The browser requests the Sheets write scope when the guest submits and holds the token only for that attempt.
+
+The form appends a row with `status=open` and displays the ticket ID on confirmation. The organizer filters the ticket tab by status and updates tickets to `in_progress` or `closed` directly in Sheets. Status ownership is a convention for this shared Sheet. If retries produce more than one row with the same ticket ID, use that ID as one ticket.
+
+To enable the form, configure the Google Cloud web client and Sheets API as described above, then set `googleClientId` and `spreadsheetId` in [sheets-config.js](../sheets-config.js). Start a local preview with `python3 -m http.server 8000 --bind 127.0.0.1` and visit `http://localhost:8000/`. Verify an invited Editor can submit and an invited Viewer receives a permission message. The four hub tabs are separate from this form and are not required for this check.
 
 ## Synchronization and failure handling
 

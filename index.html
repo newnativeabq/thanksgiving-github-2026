@@ -3,12 +3,43 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://accounts.google.com/gsi/client; style-src 'self' https://accounts.google.com/gsi/style; connect-src https://accounts.google.com/gsi/ https://sheets.googleapis.com; frame-src https://accounts.google.com/gsi/; object-src 'none'; base-uri 'none'; form-action 'none'">
   <title>Event Hub</title>
+  <link rel="stylesheet" href="./feedback.css">
+  <script type="module" src="./feedback.js"></script>
 </head>
 <body>
   <main>
-    <h1>Event Hub</h1>
-    <p>Coming soon.</p>
+    <header>
+      <h1>Event Hub</h1>
+      <p>Coming soon.</p>
+    </header>
+
+    <section aria-labelledby="feedback-heading">
+      <h2 id="feedback-heading">Send feedback</h2>
+      <p id="feedback-sharing">People with access to the event Sheet can read what you send. Leave out private information.</p>
+      <form id="feedback" aria-describedby="feedback-sharing">
+        <fieldset id="feedback-fields">
+          <label for="category">Type</label>
+          <select id="category" name="category">
+            <option value="issue">Report a problem</option>
+            <option value="suggestion">Suggest a change</option>
+            <option value="question">Ask a question</option>
+          </select>
+
+          <label for="summary">Summary</label>
+          <input id="summary" name="summary" required maxlength="120">
+
+          <label for="details">Details <span>(optional)</span></label>
+          <textarea id="details" name="details" rows="4" maxlength="2000"></textarea>
+        </fieldset>
+
+        <button id="send-feedback" type="submit" disabled>Send with Google</button>
+        <p class="form-note">Use an invited Google account with edit access.</p>
+        <p id="feedback-status" role="status"></p>
+        <noscript><p>Enable JavaScript to send feedback.</p></noscript>
+      </form>
+    </section>
   </main>
 </body>
 </html>

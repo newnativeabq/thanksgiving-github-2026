@@ -1,0 +1,11 @@
+{
+  "name": "event-hub",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:css": "tailwindcss -i styles/hub.css -o hub.css --minify"
+  },
+  "devDependencies": {
+    "tailwindcss": "3.4.19"
+  }
+}

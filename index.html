@@ -1,45 +1,363 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://accounts.google.com/gsi/client; style-src 'self' https://accounts.google.com/gsi/style; connect-src https://accounts.google.com/gsi/ https://sheets.googleapis.com; frame-src https://accounts.google.com/gsi/; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Event Hub</title>
+
+  <!-- Google Fonts: Editorial Serif (Playfair Display) & Clean UI Sans (Inter) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,600;0,700;1,600&display=swap" rel="stylesheet">
+
+
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://accounts.google.com/gsi/client; style-src 'self' https://accounts.google.com/gsi/style https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src https://accounts.google.com/gsi/ https://sheets.googleapis.com; frame-src https://accounts.google.com/gsi/; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <link rel="stylesheet" href="./hub.css">
   <link rel="stylesheet" href="./feedback.css">
-  <script type="module" src="./feedback.js"></script>
+  <script type="module" src="./hub.js"></script>
 </head>
-<body>
-  <main>
-    <header>
-      <h1>Event Hub</h1>
-      <p>Coming soon.</p>
-    </header>
+<body class="min-h-screen flex flex-col selection:bg-accent-light selection:text-ink">
 
-    <section aria-labelledby="feedback-heading">
-      <h2 id="feedback-heading">Send feedback</h2>
-      <p id="feedback-sharing">People with access to the event Sheet can read what you send. Leave out private information.</p>
-      <form id="feedback" aria-describedby="feedback-sharing">
-        <fieldset id="feedback-fields">
-          <label for="category">Type</label>
-          <select id="category" name="category">
-            <option value="issue">Report a problem</option>
-            <option value="suggestion">Suggest a change</option>
-            <option value="question">Ask a question</option>
-          </select>
+  <!-- Toast Notification Container (Replaces alert/confirm) -->
+  <div id="toast-container" class="fixed bottom-5 right-5 z-50 flex flex-col gap-2 pointer-events-none max-w-sm w-full px-4 sm:px-0"></div>
 
-          <label for="summary">Summary</label>
-          <input id="summary" name="summary" required maxlength="120">
+  <header class="bg-linen border-b border-warmborder">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-7 sm:py-9">
+      <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
 
-          <label for="details">Details <span>(optional)</span></label>
-          <textarea id="details" name="details" rows="4" maxlength="2000"></textarea>
-        </fieldset>
+        <!-- Brand & Feast Title -->
+        <div class="space-y-2.5 max-w-2xl">
+          <h1 class="font-serif text-3xl sm:text-4xl lg:text-[2.65rem] font-bold text-ink leading-tight tracking-tight">
+            Event Hub
+          </h1>
+          <p class="text-ink-muted text-sm sm:text-base leading-relaxed">
+            Thanksgiving · Thursday, November 26, 2026
+          </p>
+        </div>
 
-        <button id="send-feedback" type="submit" disabled>Send with Google</button>
-        <p class="form-note">Use an invited Google account with edit access.</p>
-        <p id="feedback-status" role="status"></p>
-        <noscript><p>Enable JavaScript to send feedback.</p></noscript>
-      </form>
+        <!-- Live Summary KPI Pills -->
+        <div id="kpi-pills" hidden class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-2 xl:grid-cols-4 gap-3 shrink-0">
+          <!-- Populated dynamically via JS -->
+        </div>
+
+      </div>
+
+
+      <section class="mt-5 space-y-2" aria-label="Shared Google Sheet">
+        <div class="flex flex-wrap gap-2">
+          <button type="button" id="hub-sign-in" class="controls-button controls-primary" disabled>Sign in with Google</button>
+          <button type="button" id="hub-refresh" class="controls-button" hidden>Refresh</button>
+          <button type="button" id="hub-disconnect" class="controls-button" hidden>Sign out</button>
+          <button type="button" id="hub-retry" class="controls-button" hidden>Check and retry</button>
+          <button type="button" id="hub-discard" class="controls-button" hidden>Clear pending change</button>
+        </div>
+        <p id="hub-status" role="status" class="text-sm text-ink-muted">Loading Event Hub…</p>
+        <details id="hub-pending" class="rounded-xl border border-warmborder bg-linen p-3 text-sm" open hidden>
+          <summary class="cursor-pointer font-semibold">Pending changes</summary>
+          <ul id="hub-pending-values" class="mt-2 max-h-40 space-y-1 overflow-auto pl-5 list-disc"></ul>
+        </details>
+      </section>
+
+      <!-- 4 Main Navigation Tabs -->
+      <nav id="hub-nav" hidden aria-label="Feast Planner Sections" class="mt-6 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+        <button data-tab="menu" class="nav-tab-btn" aria-pressed="false">
+          <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg>
+          <span>Menu &amp; servings</span>
+        </button>
+
+        <button data-tab="grocery" class="nav-tab-btn" aria-pressed="false">
+          <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
+          <span>Groceries</span>
+          <span id="nav-grocery-badge" class="ml-1 px-2 py-0.5 text-xs rounded-full bg-positive-light text-positive-dark font-bold"></span>
+        </button>
+
+        <button data-tab="potluck" class="nav-tab-btn" aria-pressed="false">
+          <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+          <span>Potluck</span>
+          <span id="nav-potluck-badge" class="ml-1 px-2 py-0.5 text-xs rounded-full bg-warning-light text-ink font-bold"></span>
+        </button>
+
+        <button data-tab="sync" class="nav-tab-btn" aria-pressed="false">
+          <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+          <span>Prep &amp; feedback</span>
+        </button>
+      </nav>
+    </div>
+  </header>
+
+  <!-- Main Workspace Container -->
+  <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-7 sm:py-9">
+
+    <div id="hub-data" hidden>
+    <!-- TAB 1: MENU & DYNAMIC SCALER -->
+    <section id="tab-menu" class="tab-panel space-y-6">
+      <div class="bg-linen border border-warmborder rounded-2xl p-4 shadow-warm space-y-2">
+        <div class="text-xs font-bold uppercase tracking-wider text-ink-muted">Filter menu</div>
+        <div id="diet-filter-bar" class="flex flex-wrap items-center gap-2"></div>
+      </div>
+
+      <!-- 7 Interactive Dish Cards Grid -->
+      <div id="dish-cards-grid" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+        <!-- Populated dynamically -->
+      </div>
+      <div id="removed-menu"></div>
     </section>
+
+    <!-- TAB 2: SCALED GROCERY LIST -->
+    <section id="tab-grocery" class="tab-panel hidden space-y-6">
+      <!-- Grocery Header & Controls Card -->
+      <div class="bg-linen border border-warmborder rounded-2xl p-5 sm:p-6 shadow-warm space-y-5">
+        <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <div>
+            <h2 class="font-serif text-2xl sm:text-3xl font-bold text-ink">Consolidated Supermarket List</h2>
+            <p class="text-sm text-ink-muted mt-1">
+              Quantities are combined across the menu using serving targets from the Sheet.
+            </p>
+          </div>
+          <div class="flex flex-wrap items-center gap-2.5">
+            <button data-action="copyGroceryList" class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-accent hover:bg-accent-dark text-white text-sm font-semibold shadow-sm transition-all">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"/></svg>
+              Copy Formatted List to Clipboard
+            </button>
+            <button id="uncheck-all-btn" data-action="handleUncheckAllGroceries" data-edit disabled class="px-3.5 py-2.5 rounded-xl border border-warmborder bg-parchment hover:bg-warmborder/40 text-ink text-sm font-medium transition-all">
+              Uncheck All
+            </button>
+          </div>
+        </div>
+
+        <!-- Progress Bar -->
+        <div class="bg-parchment border border-warmborder rounded-xl p-3.5 space-y-2">
+          <div class="flex items-center justify-between text-xs sm:text-sm font-semibold">
+            <span id="grocery-progress-label" class="text-ink">0 of 0 items gathered</span>
+            <span id="grocery-progress-pct" class="text-positive-dark font-bold">0%</span>
+          </div>
+          <div class="w-full h-2.5 bg-warmborder/70 rounded-full overflow-hidden">
+            <progress id="grocery-progress-bar" class="block h-full w-full" value="0" max="100" aria-label="Grocery list progress"></progress>
+          </div>
+        </div>
+
+        <!-- Search, Aisle Filter & Hide Checked Toggle -->
+        <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+          <div class="relative flex-1 max-w-md">
+            <svg class="w-4 h-4 text-ink-subtle absolute left-3.5 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+            <input type="text" id="grocery-search-input" placeholder="Search ingredients or dishes (e.g., garlic, vegan butter)..." class="w-full pl-10 pr-4 py-2.5 rounded-xl bg-parchment border border-warmborder text-sm text-ink placeholder-ink-subtle focus:outline-none focus:border-accent transition-colors" />
+          </div>
+
+          <div class="flex flex-wrap items-center gap-3">
+            <select id="grocery-aisle-select" class="px-3.5 py-2.5 rounded-xl bg-parchment border border-warmborder text-sm font-medium text-ink focus:outline-none focus:border-accent">
+              <option value="ALL">All Supermarket Aisles</option>
+              <option value="Produce">Produce</option>
+              <option value="Meat & Plant-Based Proteins">Meat &amp; Plant-Based Proteins</option>
+              <option value="Dairy & Vegan Fridge">Dairy &amp; Vegan Fridge</option>
+              <option value="Bakery & Bread">Bakery &amp; Bread</option>
+              <option value="Pantry & Oils">Pantry &amp; Oils</option>
+              <option value="Spices & Seasonings">Spices &amp; Seasonings</option>
+            </select>
+
+            <label class="inline-flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl bg-parchment border border-warmborder cursor-pointer select-none">
+              <input type="checkbox" id="hide-checked-toggle" class="w-4 h-4 rounded accent-positive cursor-pointer" />
+              <span class="text-sm font-medium text-ink">Hide Checked Items</span>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <!-- Aisle Sections Container -->
+      <div id="grocery-aisles-container" class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <!-- Populated dynamically -->
+      </div>
+      <div id="removed-grocery"></div>
+    </section>
+
+    <!-- TAB 3: POTLUCK GUEST BOARD -->
+    <section id="tab-potluck" class="tab-panel hidden space-y-6">
+      <!-- Top Intro + Kitchen Logistics Overview -->
+      <div class="bg-linen border border-warmborder rounded-2xl p-5 sm:p-6 shadow-warm flex flex-col lg:flex-row lg:items-center lg:justify-between gap-5">
+        <div class="space-y-1.5">
+          <h2 class="font-serif text-2xl sm:text-3xl font-bold text-ink">Potluck Guest Board (Who's Bringing What)</h2>
+          <p class="text-sm text-ink-muted max-w-2xl">
+            Add a dish and tell the organizer if you need oven, stovetop, or fridge space.
+          </p>
+        </div>
+
+        <!-- Kitchen Needs Summary Badges -->
+        <div id="kitchen-needs-summary" class="flex flex-wrap items-center gap-2.5 shrink-0">
+          <!-- Populated dynamically -->
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        <!-- Left Column: Sign-up Form (4 cols on desktop) -->
+        <div class="lg:col-span-4 bg-linen border border-warmborder rounded-2xl p-5 sm:p-6 shadow-warm space-y-4">
+          <div class="border-b border-warmborder pb-3">
+            <h3 class="font-serif text-xl font-bold text-ink">Bring a Dish to the Table</h3>
+            <p class="text-xs text-ink-muted mt-0.5">Invited Editors can add, update, or withdraw signups.</p>
+          </div>
+
+          <form id="potluck-add-form">
+            <fieldset class="space-y-4" data-edit disabled>
+              <div>
+                <label for="pl-guest-name" class="block text-xs font-bold uppercase tracking-wider text-ink-muted mb-1">Guest Name *</label>
+                <input type="text" id="pl-guest-name" maxlength="100" required placeholder="e.g., Maya & Leo" class="w-full px-3.5 py-2.5 rounded-xl bg-parchment border border-warmborder text-sm text-ink focus:outline-none focus:border-accent" />
+              </div>
+
+              <div>
+                <label for="pl-dish-name" class="block text-xs font-bold uppercase tracking-wider text-ink-muted mb-1">Dish Name *</label>
+                <input type="text" id="pl-dish-name" maxlength="160" required placeholder="e.g., Roasted Brussels Sprouts w/ Balsamic" class="w-full px-3.5 py-2.5 rounded-xl bg-parchment border border-warmborder text-sm text-ink focus:outline-none focus:border-accent" />
+              </div>
+
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label for="pl-course" class="block text-xs font-bold uppercase tracking-wider text-ink-muted mb-1">Course</label>
+                  <select id="pl-course" required class="w-full px-3 py-2.5 rounded-xl bg-parchment border border-warmborder text-sm text-ink focus:outline-none focus:border-accent">
+                    <option value="" selected disabled>Choose a course</option>
+                    <option value="Appetizer">Appetizer</option>
+                    <option value="Side">Side</option>
+                    <option value="Bread">Bread</option>
+                    <option value="Sauce/Relish">Sauce/Relish</option>
+                    <option value="Dessert">Dessert</option>
+                    <option value="Drinks">Drinks</option>
+                  </select>
+                </div>
+                <div>
+                  <label for="pl-servings" class="block text-xs font-bold uppercase tracking-wider text-ink-muted mb-1">Servings</label>
+                  <input type="number" id="pl-servings" min="1" max="100" required class="w-full px-3.5 py-2.5 rounded-xl bg-parchment border border-warmborder text-sm text-ink focus:outline-none focus:border-accent" />
+                </div>
+              </div>
+
+              <div>
+                <label class="block text-xs font-bold uppercase tracking-wider text-ink-muted mb-1.5">Dietary Tags</label>
+                <div class="flex flex-wrap gap-2">
+                  <label class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-parchment border border-warmborder text-xs font-medium cursor-pointer hover:border-positive">
+                    <input type="checkbox" name="pl-diet" value="Vegan" class="accent-positive" /> Vegan
+                  </label>
+                  <label class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-parchment border border-warmborder text-xs font-medium cursor-pointer hover:border-positive">
+                    <input type="checkbox" name="pl-diet" value="Vegetarian" class="accent-positive" /> Vegetarian
+                  </label>
+                  <label class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-parchment border border-warmborder text-xs font-medium cursor-pointer hover:border-positive">
+                    <input type="checkbox" name="pl-diet" value="Gluten-Free" class="accent-positive" /> Gluten-Free
+                  </label>
+                  <label class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-parchment border border-warmborder text-xs font-medium cursor-pointer hover:border-positive">
+                    <input type="checkbox" name="pl-diet" value="Nut-Free" class="accent-positive" /> Nut-Free
+                  </label>
+                  <label class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-parchment border border-warmborder text-xs font-medium cursor-pointer hover:border-positive">
+                    <input type="checkbox" name="pl-diet" value="Dairy-Free" class="accent-positive" /> Dairy-Free
+                  </label>
+                </div>
+              </div>
+
+              <div>
+                <label for="pl-kitchen" class="block text-xs font-bold uppercase tracking-wider text-ink-muted mb-1">Kitchen Needs on Arrival</label>
+                <select id="pl-kitchen" required class="w-full px-3.5 py-2.5 rounded-xl bg-parchment border border-warmborder text-sm text-ink focus:outline-none focus:border-accent">
+                  <option value="" selected disabled>Choose kitchen needs</option>
+                    <option value="None">None (Ready to serve)</option>
+                  <option value="Oven Reheat">Oven Reheat</option>
+                  <option value="Fridge Space">Fridge Space</option>
+                  <option value="Stovetop">Stovetop</option>
+                </select>
+              </div>
+
+              <button type="submit" class="w-full py-3 px-4 rounded-xl bg-accent hover:bg-accent-dark text-white font-semibold text-sm shadow-sm transition-all flex items-center justify-center gap-2">
+                <span>+ Add Dish to Potluck Board</span>
+              </button>
+            </fieldset>
+          </form>
+        </div>
+
+        <!-- Right Column: Potluck Cards Grid (8 cols on desktop) -->
+        <div class="lg:col-span-8 space-y-4">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <h3 class="font-serif text-xl font-bold text-ink">Guest contributions</h3>
+          </div>
+          <div id="potluck-cards-grid" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <!-- Populated dynamically -->
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 4: GOOGLE SHEETS SYNC & PREP TIMELINE -->
+    <section id="tab-sync" class="tab-panel hidden space-y-8">
+
+      <!-- Make-Ahead & Thanksgiving Day Master Prep Timeline -->
+      <div class="space-y-4">
+        <div class="flex flex-col sm:flex-row sm:items-end justify-between gap-2">
+          <div>
+            <h2 class="font-serif text-2xl sm:text-3xl font-bold text-ink">Make-Ahead &amp; Feast Day Master Timeline</h2>
+            <p class="text-sm text-ink-muted mt-1">
+              Check off tasks to share prep progress with the other guests.
+            </p>
+          </div>
+          <button data-action="resetTimelineChecks" data-edit disabled class="text-xs font-medium text-ink-muted hover:text-ink underline underline-offset-2 self-start sm:self-auto">
+            Reset Timeline Checkboxes
+          </button>
+        </div>
+
+        <div id="prep-timeline-container" class="space-y-5">
+          <!-- Populated dynamically -->
+        </div>
+        <div id="removed-prep"></div>
+      </div>
+
+
+    </section>
+
+    </div>
+
+      <section id="hub-feedback" class="feedback-card mt-8" hidden aria-labelledby="feedback-heading">
+        <h2 id="feedback-heading">Send feedback</h2>
+        <p id="feedback-sharing">People with access to the event Sheet can read what you send. Leave out private information.</p>
+        <form id="feedback" aria-describedby="feedback-sharing">
+          <fieldset id="feedback-fields" disabled>
+            <label for="category">Type</label>
+            <select id="category" name="category" required>
+                <option value="" selected disabled>Choose a type</option>
+              <option value="issue">Report a problem</option>
+              <option value="suggestion">Suggest a change</option>
+              <option value="question">Ask a question</option>
+            </select>
+
+            <label for="summary">Summary</label>
+            <input id="summary" name="summary" required maxlength="120">
+
+            <label for="details">Details <span>(optional)</span></label>
+            <textarea id="details" name="details" rows="4" maxlength="2000"></textarea>
+          </fieldset>
+
+          <button id="send-feedback" type="submit" disabled>Send feedback</button>
+          <p class="form-note">Sending feedback requires edit access to the Sheet.</p>
+          <p id="feedback-status" role="status"></p>
+          <noscript><p>Enable JavaScript to send feedback.</p></noscript>
+        </form>
+      </section>
   </main>
+
+  <dialog id="record-dialog" class="record-dialog" aria-labelledby="record-title">
+    <form id="record-form">
+      <h2 id="record-title"></h2>
+      <p id="record-description"></p>
+      <fieldset id="record-fields"></fieldset>
+      <p id="record-status" role="status"></p>
+      <div class="record-buttons">
+        <button type="button" id="record-cancel" class="controls-button">Cancel</button>
+        <button type="submit" id="record-save" class="controls-button controls-primary">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Recipe Full Detail & Live Scaler Modal -->
+  <div id="recipe-modal" class="fixed inset-0 z-50 hidden items-center justify-center p-3 sm:p-6 bg-ink/60 backdrop-blur-xs overflow-y-auto">
+    <div id="recipe-modal-content" class="bg-linen border border-warmborder rounded-2xl max-w-3xl w-full max-h-[90vh] flex flex-col shadow-warm-lg animate-modal overflow-hidden">
+      <!-- Populated dynamically when a dish is opened -->
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer class="border-t border-warmborder bg-linen/70 mt-12">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-ink-muted">
+      <div class="font-serif font-semibold text-ink text-sm">Event Hub · Thanksgiving 2026</div>
+    </div>
+  </footer>
+
 </body>
 </html>

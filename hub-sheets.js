@@ -1,6 +1,6 @@
 import { importedDishId, importedIngredientId } from './recipe-contract.js';
 import {
-  attachRecipeRecords, hasHeaders, INGREDIENT_HEADER, prepareRecipeOperation, readGroceryIdentity,
+  attachRecipeRecords, hasHeaders, prepareRecipeOperation,
   RECIPE_HEADER, RECIPE_TAB, recipeAppendRequest, reconcileRecipe, reviewRecipe,
 } from './recipe-sheet.js';
 import { spreadsheetId } from './sheets-config.js';
@@ -105,15 +105,13 @@ function parseSnapshot({ result, extended }, keys) {
   const data = {};
   const roster = new Map();
   const issues = new Set();
-  const groceryHeader = TABS.grocery[1].split(',');
   const definitionRange = extended ? ranges.at(-1) : undefined;
   const ready = Boolean(rangeMatches(definitionRange, RECIPE_TAB, 'E') &&
-    hasHeaders(definitionRange.values, RECIPE_HEADER) &&
-    hasHeaders(ranges[2]?.values, [...groceryHeader, ...INGREDIENT_HEADER]));
+    hasHeaders(definitionRange.values, RECIPE_HEADER));
   const tableRows = {};
   Object.entries(TABS).forEach(([kind, [tab, header]], i) => {
     const expected = header.split(',');
-    const width = kind === 'grocery' && extended ? 7 : expected.length;
+    const width = expected.length;
     const last = String.fromCharCode(64 + width);
     const envelope = ranges[i];
     const rows = envelope?.values;
@@ -142,10 +140,9 @@ function parseSnapshot({ result, extended }, keys) {
         ? typeof row[1] === 'string' && row[1].trim() && (value === null || Number.isInteger(value) && value >= 1 && value <= 100)
         : value === null || typeof value === 'boolean';
       if (legacy && (results.has(id) || !goodValue) || !legacy && kind === 'prep') throw schemaError(tab);
-      const groceryIdentity = kind === 'grocery' && (legacy ? keys.legacyRoster.get(id) : readGroceryIdentity(id, row));
       if (!legacy) {
         const pattern = kind === 'menu' ? importedDishId : importedIngredientId;
-        const invalid = !pattern.test(id) || !goodValue || (kind === 'grocery' && !groceryIdentity);
+        const invalid = !pattern.test(id) || !goodValue;
         if (dynamicIds.has(id) || invalid) {
           issues.add(typeof id === 'string' && id ? id.slice(0, 100) : tab);
           results.delete(id);
@@ -156,6 +153,7 @@ function parseSnapshot({ result, extended }, keys) {
         if (invalid || !ready) return;
       }
       results.set(id, kind === 'menu' ? { row: index + 2, value, title: row[1].trim() } : { row: index + 2, value });
+      const groceryIdentity = kind === 'grocery' && legacy && keys.legacyRoster.get(id);
       if (groceryIdentity) roster.set(id, groceryIdentity);
     });
     if ([...keys[kind]].some(id => !results.has(id))) throw schemaError(tab);
@@ -180,7 +178,7 @@ async function readData(token, signal) {
   async function read(extended) {
     const query = new URLSearchParams({ valueRenderOption: 'UNFORMATTED_VALUE' });
     for (const [kind, [tab, header]] of Object.entries(TABS)) {
-      const last = kind === 'grocery' && extended ? 'G' : String.fromCharCode(64 + header.split(',').length);
+      const last = String.fromCharCode(64 + header.split(',').length);
       query.append('ranges', `${tab}!A1:${last}`);
     }
     if (extended) query.append('ranges', `${RECIPE_TAB}!A1:E`);

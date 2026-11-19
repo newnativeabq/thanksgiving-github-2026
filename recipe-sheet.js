@@ -1,23 +1,14 @@
 import {
-  AISLE_NAMES, canonicalJson, importedDishId, importedIngredientId, importedRecipeCard,
+  canonicalJson, importedDishId, importedIngredientId, importedRecipeCard,
   ingredientIdentity, isRecipeFingerprint, readRecipeJson,
 } from './recipe-contract.js';
-import { RECIPE_UNITS } from './recipe-validator.generated.js';
 
 export const RECIPE_TAB = 'Recipe_Definitions';
 export const RECIPE_HEADER = ['dish_id', 'definition_json', 'ingredient_keys_json', 'created_at', 'import_fingerprint'];
-export const INGREDIENT_HEADER = ['item_name', 'unit', 'aisle'];
 export const IMPORT_MARKER = 'event_hub_recipe_import_v1';
 
 export const hasHeaders = (rows, header) =>
   Array.isArray(rows?.[0]) && rows[0].length === header.length && header.every((key, col) => rows[0][col] === key);
-
-export function readGroceryIdentity(key, row) {
-  const [, , , , name, unit, aisle] = row;
-  if (typeof name !== 'string' || !name.trim() || Array.from(name).length > 140 ||
-      !RECIPE_UNITS.includes(unit) || !Object.hasOwn(AISLE_NAMES, aisle)) return undefined;
-  return { key, name: name.trim(), unit, aisle };
-}
 
 function groupRows(rows) {
   const groups = new Map();
@@ -30,28 +21,70 @@ function groupRows(rows) {
   return groups;
 }
 
+function groupIngredients(ingredients) {
+  const groups = new Map();
+  for (const [index, item] of ingredients.entries()) {
+    const identity = ingredientIdentity(item);
+    if (!groups.has(identity)) groups.set(identity, { item, indices: [] });
+    groups.get(identity).indices.push(index);
+  }
+  return [...groups.values()];
+}
+
 export function attachRecipeRecords(data, { definitionRows, menuRows, groceryRows, roster, ready, issues, legacyKeys }) {
   const rawDefinitions = groupRows(definitionRows);
   const rawMenu = groupRows(menuRows);
   const rawGrocery = groupRows(groceryRows);
   const definitions = new Map();
   const imported = [];
+  const parsed = new Map();
   for (const [id, rows] of rawDefinitions) {
     try {
-      if (!ready || !importedDishId.test(id) || rows.length !== 1 || !data.menu.has(id)) throw new Error();
+      if (!ready || !importedDishId.test(id) || rows.length !== 1) throw new Error();
       const [, text, mappingText, createdAt, fingerprint] = rows[0];
       if (!isRecipeFingerprint(fingerprint) || typeof createdAt !== 'string' || !Number.isFinite(Date.parse(createdAt)) ||
           typeof mappingText !== 'string' || mappingText.length > 4000) throw new Error();
       const { recipe, serialized } = readRecipeJson(text);
       const mapping = JSON.parse(mappingText);
       if (!Array.isArray(mapping) || mapping.length !== recipe.ingredients.length ||
-          !mapping.every((key, i) => typeof key === 'string' && roster.has(key) &&
-            ingredientIdentity(roster.get(key)) === ingredientIdentity(recipe.ingredients[i]))) throw new Error();
-      definitions.set(id, { serialized, mapping, fingerprint });
-      imported.push(importedRecipeCard(id, recipe, mapping));
+          !mapping.every(key => typeof key === 'string' && (roster.has(key) || importedIngredientId.test(key)))) throw new Error();
+      parsed.set(id, { recipe, serialized, mapping, fingerprint });
     } catch {
       issues.add(typeof id === 'string' ? id.slice(0, 100) : 'Recipe_Definitions');
     }
+  }
+
+  // The recipe that allocated a key supplies its identity, even after removal from the menu.
+  for (const [id, { recipe, mapping }] of parsed) {
+    const prefix = 'ing-' + id.slice('recipe-'.length) + '-';
+    const ownedIngredients = new Map();
+    for (const [groupIndex, { item, indices }] of groupIngredients(recipe.ingredients).entries()) {
+      const expectedKey = prefix + (groupIndex + 1);
+      for (const index of indices) {
+        const key = mapping[index];
+        if (!key.startsWith(prefix) || !data.grocery.has(key)) continue;
+        if (key !== expectedKey) ownedIngredients.set(key, null);
+        else if (!ownedIngredients.has(key)) {
+          ownedIngredients.set(key, { key, name: item.name.trim(), unit: item.unit, aisle: item.aisle });
+        }
+      }
+    }
+    for (const [key, identity] of ownedIngredients) if (identity) roster.set(key, identity);
+  }
+  for (const key of data.grocery.keys()) {
+    if (importedIngredientId.test(key) && !roster.has(key)) {
+      issues.add(key);
+      data.grocery.delete(key);
+    }
+  }
+  for (const [id, { recipe, serialized, mapping, fingerprint }] of parsed) {
+    if (!data.menu.has(id) || !mapping.every((key, index) => roster.has(key) &&
+        ingredientIdentity(roster.get(key)) === ingredientIdentity(recipe.ingredients[index]))) {
+      issues.add(id);
+      continue;
+    }
+    definitions.set(id, { serialized, mapping, fingerprint });
+    imported.push(importedRecipeCard(id, recipe, mapping));
   }
   for (const id of data.menu.keys()) {
     if (!legacyKeys.has(id) && !definitions.has(id)) {
@@ -63,23 +96,19 @@ export function attachRecipeRecords(data, { definitionRows, menuRows, groceryRow
 }
 
 export function reviewRecipe(recipe, target, choices, snapshot) {
-  const groups = new Map();
-  for (const [index, item] of recipe.ingredients.entries()) {
-    const identity = ingredientIdentity(item);
-    if (!groups.has(identity)) groups.set(identity, { item, indices: [], candidates: [] });
-    const group = groups.get(identity);
-    group.indices.push(index);
-    const candidate = snapshot.recipeImport.roster.get(item.grocery_key);
-    if (candidate && ingredientIdentity(candidate) === identity && !group.candidates.some(({ key }) => key === candidate.key)) {
-      group.candidates.push({ ...candidate, checked: snapshot.grocery.get(candidate.key).value });
-    }
-  }
   const title = recipe.title.trim().toLowerCase();
   const sameTitles = [...snapshot.menu].filter(([, entry]) => entry.title.toLowerCase() === title).map(([key]) => key).sort();
-  const rows = [...groups.values()].map((group, index) => {
+  const rows = groupIngredients(recipe.ingredients).map((group, index) => {
+    const identity = ingredientIdentity(group.item);
+    const candidates = new Map();
+    for (const ingredientIndex of group.indices) {
+      const candidate = snapshot.recipeImport.roster.get(recipe.ingredients[ingredientIndex].grocery_key);
+      if (candidate && ingredientIdentity(candidate) === identity && !candidates.has(candidate.key)) {
+        candidates.set(candidate.key, { ...candidate, checked: snapshot.grocery.get(candidate.key).value });
+      }
+    }
     const requested = choices?.[index] ?? '';
-    const matched = group.candidates.find(({ key }) => key === requested);
-    return { ...group, matched, requested };
+    return { ...group, candidates: [...candidates.values()], matched: candidates.get(requested), requested };
   });
   const signature = canonicalJson({
     sameTitles,
@@ -137,7 +166,7 @@ export function recipeAppendRequest(operation, sheetIds) {
   requests.push(append(RECIPE_TAB, [[id, serialized, JSON.stringify(mapping), createdAt, fingerprint]]));
   requests.push(append('Menu_Servings', [[id, title, target, '', createdAt]]));
   if (newIngredients.length) {
-    requests.push(append('Grocery_Checks', newIngredients.map(({ key, name, unit, aisle }) => [key, false, '', createdAt, name, unit, aisle])));
+    requests.push(append('Grocery_Checks', newIngredients.map(({ key }) => [key, false, '', createdAt])));
   }
   return { requests };
 }

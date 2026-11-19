@@ -79,7 +79,12 @@
 
         <button data-tab="sync" class="nav-tab-btn" aria-pressed="false">
           <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
-          <span>Prep &amp; feedback</span>
+          <span>Prep</span>
+        </button>
+
+        <button data-tab="feedback" class="nav-tab-btn" aria-pressed="false">
+          <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M5 5h14v11H9l-4 4V5zM8 9h8M8 12h5"/></svg>
+          <span>Tell Vinny to Change Something</span>
         </button>
       </nav>
     </div>
@@ -304,28 +309,31 @@
 
     </div>
 
-      <section id="hub-feedback" class="feedback-card mt-8" hidden aria-labelledby="feedback-heading">
-        <h2 id="feedback-heading">Send feedback</h2>
+      <section id="hub-feedback" class="feedback-card" hidden aria-labelledby="feedback-heading">
+        <h2 id="feedback-heading">Tell Vinny to Change Something</h2>
         <p id="feedback-sharing">People with access to the event Sheet can read what you send. Leave out private information.</p>
         <form id="feedback" aria-describedby="feedback-sharing">
           <fieldset id="feedback-fields" disabled>
-            <label for="category">Type</label>
-            <select id="category" name="category" required>
-                <option value="" selected disabled>Choose a type</option>
-              <option value="issue">Report a problem</option>
-              <option value="suggestion">Suggest a change</option>
-              <option value="question">Ask a question</option>
-            </select>
-
-            <label for="summary">Summary</label>
-            <input id="summary" name="summary" required maxlength="120">
-
-            <label for="details">Details <span>(optional)</span></label>
+            <label for="details">What should change?</label>
             <textarea id="details" name="details" rows="4" maxlength="2000"></textarea>
+
+            <details id="feedback-options">
+              <summary>Details</summary>
+              <div class="feedback-options-fields">
+                <label for="category">Type</label>
+                <select id="category" name="category">
+                  <option value="suggestion" selected>Suggest a Change</option>
+                  <option value="issue">Report a problem</option>
+                  <option value="question">Ask a question</option>
+                </select>
+
+                <label for="summary">Summary <span>(optional)</span></label>
+                <input id="summary" name="summary" maxlength="120">
+              </div>
+            </details>
           </fieldset>
 
           <button id="send-feedback" type="submit" disabled>Send feedback</button>
-          <p class="form-note">Sending feedback requires edit access to the Sheet.</p>
           <p id="feedback-status" role="status"></p>
           <noscript><p>Enable JavaScript to send feedback.</p></noscript>
         </form>

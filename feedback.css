@@ -11,8 +11,7 @@
   font-weight: 650;
 }
 
-.feedback-card label span,
-.feedback-card .form-note {
+.feedback-card label span {
   font-size: .9rem;
   font-weight: normal;
   color: rgb(var(--color-muted));
@@ -50,12 +49,25 @@
   font-weight: 650;
 }
 
-.feedback-card .form-note {
-  margin-bottom: .5rem;
+#feedback-options {
+  border-top: 1px solid rgb(var(--color-border));
+  padding-top: .65rem;
+}
+
+#feedback-options summary {
+  cursor: pointer;
+  font-size: .875rem;
+  font-weight: 650;
+}
+
+.feedback-options-fields {
+  display: grid;
+  gap: .3rem;
+  margin-top: .6rem;
 }
 
 #feedback-status {
-  margin-bottom: 0;
+  margin: .55rem 0 0;
   overflow-wrap: anywhere;
 }
 

@@ -1159,7 +1159,7 @@ function updateVisibility() {
   element('hub-nav').hidden = !hasData;
   element('hub-data').hidden = !hasData;
   element('hub-feedback').hidden = !connection.mode || connection.authenticating ||
-    (hasData && state.activeTab !== 'sync');
+    (hasData && state.activeTab !== 'feedback');
 }
 
 function updateConnection(next) {

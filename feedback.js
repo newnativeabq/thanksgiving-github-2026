@@ -43,6 +43,7 @@ async function requestValues(token, signal, range, appendValues) {
 export function createFeedback({ getToken, onExpired, onAccessDenied }) {
   const form = document.querySelector('#feedback');
   const fields = document.querySelector('#feedback-fields');
+  const options = document.querySelector('#feedback-options');
   const button = document.querySelector('#send-feedback');
   const status = document.querySelector('#feedback-status');
   let editable = false;
@@ -58,6 +59,11 @@ export function createFeedback({ getToken, onExpired, onAccessDenied }) {
     fields.disabled = !editable || Boolean(attempt || unresolvedTicket);
     button.disabled = !editable || Boolean(attempt);
     button.textContent = unresolvedTicket ? 'Check and retry' : 'Send feedback';
+  }
+
+  function clearDraft() {
+    form.reset();
+    options.open = false;
   }
 
   async function submitTicket(token, signal, ticket) {
@@ -106,10 +112,11 @@ export function createFeedback({ getToken, onExpired, onAccessDenied }) {
 
     const data = new FormData(form);
     const category = data.get('category');
-    const summary = data.get('summary')?.trim();
+    const enteredSummary = data.get('summary')?.trim() ?? '';
     const details = data.get('details')?.trim() ?? '';
+    const summary = enteredSummary || details.split('\n', 1)[0].slice(0, 120).replace(/[\uD800-\uDBFF]$/, '').trimEnd();
     if (!unresolvedTicket && (!CATEGORIES.has(category) || !summary || summary.length > 120 || details.length > 2000)) {
-      announce('Choose a type and enter a summary of up to 120 characters and details of up to 2,000 characters.', true);
+      announce('Enter what should change, or add a summary under Details.', true);
       return;
     }
 
@@ -122,7 +129,7 @@ export function createFeedback({ getToken, onExpired, onAccessDenied }) {
       await submitTicket(token, controller.signal, ticket);
       if (attempt !== controller) return;
       unresolvedTicket = undefined;
-      form.reset();
+      clearDraft();
       announce(`Feedback recorded. Ticket ID ${ticket[0]}`);
     } catch (error) {
       if (attempt !== controller) return;
@@ -158,7 +165,7 @@ export function createFeedback({ getToken, onExpired, onAccessDenied }) {
       previous?.abort();
       unresolvedTicket = undefined;
       editable = false;
-      form.reset();
+      clearDraft();
       announce('');
       render();
     },

@@ -46,7 +46,7 @@ Add a `Support_Tickets` tab to the same spreadsheet. Paste this tab-separated he
 ticket_id	created_at	category	summary	details	status
 ```
 
-The form asks guests for a category, a short summary, and optional details. It explains that anyone with Sheet access can read submissions. It does not request a name or email. Guests with Editor access can submit. Feedback uses the same Google session as the hub. It validates the support tab independently and remains available if a hub tab needs correction.
+The form opens on the feedback message. The collapsed **Details** controls let guests change the default **Suggest a Change** type or provide a summary. When the summary is blank, the hub derives it from the first line of the message. The form explains that anyone with Sheet access can read submissions. It does not request a name or email. Feedback uses the same Google session as the hub. It validates the support tab independently and remains available if a hub tab needs correction.
 
 The form appends a row with `status=open` and displays the ticket ID on confirmation. The organizer filters the ticket tab by status and updates tickets to `in_progress` or `closed` directly in Sheets. Status ownership is a convention for this shared Sheet. If retries produce more than one row with the same ticket ID, use that ID as one ticket.
 
@@ -54,7 +54,7 @@ The form appends a row with `status=open` and displays the ticket ID on confirma
 
 Configure the Google Cloud web client and Sheets API as described above, then set `googleClientId` and `spreadsheetId` in [sheets-config.js](../sheets-config.js). Start a local preview with `python3 -m http.server 8000 --bind 127.0.0.1` and visit `http://localhost:8000/`. Use **Sign in with Google** with an invited Editor account. The tested origin uses `localhost` in the browser address.
 
-Find feedback under **Prep Timeline & Feedback**. Verify an invited Editor can submit and an invited Viewer receives a permission message. Feedback requires only the `Support_Tickets` tab.
+Find feedback under **Tell Vinny to Change Something**. Verify an invited Editor can submit and an invited Viewer receives a permission message. Feedback requires only the `Support_Tickets` tab.
 
 The published page serves the checked-in Tailwind output directly. When changing styles or Tailwind classes, run `npm ci` and `npm run build:css` to regenerate `hub.css`.
 

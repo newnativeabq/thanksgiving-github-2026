@@ -11,7 +11,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,600;0,700;1,600&display=swap" rel="stylesheet">
 
 
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://accounts.google.com/gsi/client; style-src 'self' https://accounts.google.com/gsi/style https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src https://accounts.google.com/gsi/ https://sheets.googleapis.com; frame-src https://accounts.google.com/gsi/; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://accounts.google.com/gsi/client; style-src 'self' https://accounts.google.com/gsi/style https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://accounts.google.com/gsi/ https://sheets.googleapis.com; frame-src https://accounts.google.com/gsi/; object-src 'none'; base-uri 'none'; form-action 'none'">
   <link rel="stylesheet" href="./hub.css">
   <link rel="stylesheet" href="./feedback.css">
   <script type="module" src="./hub.js"></script>
@@ -97,11 +97,15 @@
     <!-- TAB 1: MENU & DYNAMIC SCALER -->
     <section id="tab-menu" class="tab-panel space-y-6">
       <div class="bg-linen border border-warmborder rounded-2xl p-4 shadow-warm space-y-2">
-        <div class="text-xs font-bold uppercase tracking-wider text-ink-muted">Filter menu</div>
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div class="text-xs font-bold uppercase tracking-wider text-ink-muted">Filter menu</div>
+          <button type="button" id="open-recipe-import" class="controls-button controls-primary" disabled>Add recipe</button>
+        </div>
         <div id="diet-filter-bar" class="flex flex-wrap items-center gap-2"></div>
       </div>
 
-      <!-- 7 Interactive Dish Cards Grid -->
+      <p id="recipe-import-issues" class="text-sm text-ink-muted" hidden></p>
+      <!-- Dish cards -->
       <div id="dish-cards-grid" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
         <!-- Populated dynamically -->
       </div>
@@ -157,6 +161,7 @@
               <option value="Bakery & Bread">Bakery &amp; Bread</option>
               <option value="Pantry & Oils">Pantry &amp; Oils</option>
               <option value="Spices & Seasonings">Spices &amp; Seasonings</option>
+              <option value="Other">Other</option>
             </select>
 
             <label class="inline-flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl bg-parchment border border-warmborder cursor-pointer select-none">
@@ -351,6 +356,43 @@
         <button type="submit" id="record-save" class="controls-button controls-primary">Save</button>
       </div>
     </form>
+  </dialog>
+
+  <dialog id="recipe-import-dialog" class="record-dialog recipe-import-dialog" aria-labelledby="recipe-import-title">
+    <div class="recipe-import-content">
+      <h2 id="recipe-import-title">Add recipe</h2>
+      <section aria-labelledby="recipe-paste-label">
+        <p>Use the prompt with your preferred agent and give it your recipe or notes. Paste the JSON it returns.</p>
+        <div class="recipe-import-actions">
+          <button type="button" id="recipe-copy-prompt" class="controls-button">Copy agent prompt</button>
+          <button type="button" id="recipe-load-example" class="controls-button">Load example</button>
+        </div>
+        <label for="recipe-prompt-text" id="recipe-prompt-label" hidden>Agent prompt</label>
+        <textarea id="recipe-prompt-text" rows="5" readonly hidden></textarea>
+        <label for="recipe-json" id="recipe-paste-label">Recipe JSON</label>
+        <textarea id="recipe-json" rows="7" spellcheck="false" autocapitalize="off" autocomplete="off" placeholder="{ &quot;schema_version&quot;: 1, … }"></textarea>
+        <button type="button" id="recipe-validate" class="controls-button">Validate and preview</button>
+        <p id="recipe-validation" class="recipe-import-status" role="status"></p>
+      </section>
+      <section id="recipe-review" aria-labelledby="recipe-review-title" hidden>
+        <h3 id="recipe-review-title" tabindex="-1">Review recipe</h3>
+        <label for="recipe-target">Event servings</label>
+        <input type="number" id="recipe-target" min="1" max="100" step="1" inputmode="numeric" placeholder="1–100">
+        <div id="recipe-preview"></div>
+        <h4>Grocery checklist</h4>
+        <p>Choose which compatible grocery rows to reuse. Reused rows keep their current checklist status.</p>
+        <div id="recipe-matches"></div>
+        <button type="button" id="recipe-open-groceries" class="controls-button" hidden>Open grocery checklist</button>
+        <p id="recipe-duplicate" class="recipe-import-status"></p>
+        <p id="recipe-reference" class="recipe-import-reference"></p>
+      </section>
+      <p id="recipe-save-status" class="recipe-import-status" role="status"></p>
+      <p id="recipe-setup-status" class="recipe-import-status" hidden>Preview is available. The organizer needs to finish the recipe import setup in Google Sheets before saving.</p>
+    </div>
+    <div class="record-buttons recipe-import-footer">
+      <button type="button" id="recipe-import-close" class="controls-button">Close</button>
+      <button type="button" id="recipe-save" class="controls-button controls-primary" disabled>Save recipe</button>
+    </div>
   </dialog>
 
   <!-- Recipe Full Detail & Live Scaler Modal -->

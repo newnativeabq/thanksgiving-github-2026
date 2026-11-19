@@ -1,3 +1,8 @@
+import { importedDishId, importedIngredientId } from './recipe-contract.js';
+import {
+  attachRecipeRecords, hasHeaders, INGREDIENT_HEADER, prepareRecipeOperation, readGroceryIdentity,
+  RECIPE_HEADER, RECIPE_TAB, recipeAppendRequest, reconcileRecipe, reviewRecipe,
+} from './recipe-sheet.js';
 import { spreadsheetId } from './sheets-config.js';
 import { googleConfigured, loadGoogleIdentity, requestAccessToken, WRITE_SCOPE } from './google-auth.js';
 
@@ -31,7 +36,7 @@ function permissionDenied(error) {
 }
 
 async function request(token, endpoint, { query, body, method = 'GET', signal } = {}) {
-  const suffix = endpoint ? '/' + endpoint : '';
+  const suffix = endpoint.startsWith(':') ? endpoint : endpoint ? '/' + endpoint : '';
   const url = new URL(`https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(spreadsheetId)}${suffix}`);
   if (query) url.search = query;
   const headers = { Authorization: `Bearer ${token}` };
@@ -88,61 +93,106 @@ function parseClaims(rows) {
   return { claims, locations };
 }
 
-function parseSnapshot(result, keys) {
-  if (!Array.isArray(result?.valueRanges) || result.valueRanges.length !== Object.keys(TABS).length) {
+function rangeMatches(envelope, tab, last) {
+  return new RegExp("^(?:" + tab + "|'" + tab + "')!A1:" + last + "[0-9]*$").test(envelope?.range);
+}
+
+function parseSnapshot({ result, extended }, keys) {
+  const ranges = result?.valueRanges;
+  if (!Array.isArray(ranges) || ranges.length !== Object.keys(TABS).length + Number(extended)) {
     throw new SheetsError(0, 'Google Sheets returned an incomplete hub response.');
   }
   const data = {};
+  const roster = new Map();
+  const issues = new Set();
+  const groceryHeader = TABS.grocery[1].split(',');
+  const definitionRange = extended ? ranges.at(-1) : undefined;
+  const ready = Boolean(rangeMatches(definitionRange, RECIPE_TAB, 'E') &&
+    hasHeaders(definitionRange.values, RECIPE_HEADER) &&
+    hasHeaders(ranges[2]?.values, [...groceryHeader, ...INGREDIENT_HEADER]));
+  const tableRows = {};
   Object.entries(TABS).forEach(([kind, [tab, header]], i) => {
     const expected = header.split(',');
-    const last = String.fromCharCode(64 + expected.length);
-    const envelope = result.valueRanges[i];
+    const width = kind === 'grocery' && extended ? 7 : expected.length;
+    const last = String.fromCharCode(64 + width);
+    const envelope = ranges[i];
     const rows = envelope?.values;
-    const validRange = new RegExp("^(?:" + tab + "|'" + tab + "')!A1:" + last + "[0-9]*$");
-    if (!validRange.test(envelope?.range) || !Array.isArray(rows) ||
-        !rows.every(row => Array.isArray(row) && row.length <= expected.length) ||
-        rows[0]?.length !== expected.length || !expected.every((key, col) => rows[0][col] === key)) {
-      throw schemaError(tab);
-    }
+    if (!rangeMatches(envelope, tab, last) || !Array.isArray(rows) ||
+        !Array.isArray(rows[0]) || !expected.every((key, col) => rows[0][col] === key) ||
+        (kind !== 'grocery' && rows[0].length !== width)) throw schemaError(tab);
     const body = rows.slice(1);
+    tableRows[kind] = body;
     if (kind === 'potluck') {
+      if (!body.every(row => Array.isArray(row) && row.length <= width)) throw schemaError(tab);
       const { claims, locations } = parseClaims(body);
       data.potluck = claims;
       data.potluckRows = locations;
       return;
     }
     const results = new Map();
+    const dynamicIds = new Set();
     body.forEach((row, index) => {
-      if (row.length === 0) return;
+      if (!Array.isArray(row) || row.length > width) throw schemaError(tab);
+      if (!row.length) return;
       const id = row[0];
+      const legacy = keys[kind].has(id);
       const rawValue = row[kind === 'menu' ? 2 : 1];
       const value = rawValue === undefined || rawValue === '' ? null : rawValue;
       const goodValue = kind === 'menu'
         ? typeof row[1] === 'string' && row[1].trim() && (value === null || Number.isInteger(value) && value >= 1 && value <= 100)
         : value === null || typeof value === 'boolean';
-      if (!keys[kind].has(id) || results.has(id) || !goodValue) throw schemaError(tab);
-      const entry = { row: index + 2, value };
-      if (kind === 'menu') entry.title = row[1].trim();
-      results.set(id, entry);
+      if (legacy && (results.has(id) || !goodValue) || !legacy && kind === 'prep') throw schemaError(tab);
+      const groceryIdentity = kind === 'grocery' && (legacy ? keys.legacyRoster.get(id) : readGroceryIdentity(id, row));
+      if (!legacy) {
+        const pattern = kind === 'menu' ? importedDishId : importedIngredientId;
+        const invalid = !pattern.test(id) || !goodValue || (kind === 'grocery' && !groceryIdentity);
+        if (dynamicIds.has(id) || invalid) {
+          issues.add(typeof id === 'string' && id ? id.slice(0, 100) : tab);
+          results.delete(id);
+          roster.delete(id);
+        }
+        if (dynamicIds.has(id)) return;
+        dynamicIds.add(id);
+        if (invalid || !ready) return;
+      }
+      results.set(id, kind === 'menu' ? { row: index + 2, value, title: row[1].trim() } : { row: index + 2, value });
+      if (groceryIdentity) roster.set(id, groceryIdentity);
     });
-    if (results.size !== keys[kind].size) throw schemaError(tab);
+    if ([...keys[kind]].some(id => !results.has(id))) throw schemaError(tab);
     data[kind] = results;
   });
+  attachRecipeRecords(data, {
+    definitionRows: ready ? definitionRange.values.slice(1) : [],
+    menuRows: tableRows.menu, groceryRows: tableRows.grocery, roster, ready, issues, legacyKeys: keys.menu,
+  });
+  const importedIngredients = new Map(data.recipeImport.imported.map(recipe => [
+    recipe.id, recipe.ingredients.map(item => item.groceryId),
+  ]));
   data.activeGrocery = new Set();
   for (const [dishId, entry] of data.menu) {
     if (entry.value === null) continue;
-    for (const id of keys.ingredientsByRecipe.get(dishId)) data.activeGrocery.add(id);
+    for (const id of keys.ingredientsByRecipe.get(dishId) ?? importedIngredients.get(dishId) ?? []) data.activeGrocery.add(id);
   }
   return data;
 }
 
 async function readData(token, signal) {
-  const query = new URLSearchParams({ valueRenderOption: 'UNFORMATTED_VALUE' });
-  for (const [tab, header] of Object.values(TABS)) {
-    const last = String.fromCharCode(64 + header.split(',').length);
-    query.append('ranges', `${tab}!A1:${last}`);
+  async function read(extended) {
+    const query = new URLSearchParams({ valueRenderOption: 'UNFORMATTED_VALUE' });
+    for (const [kind, [tab, header]] of Object.entries(TABS)) {
+      const last = kind === 'grocery' && extended ? 'G' : String.fromCharCode(64 + header.split(',').length);
+      query.append('ranges', `${tab}!A1:${last}`);
+    }
+    if (extended) query.append('ranges', `${RECIPE_TAB}!A1:E`);
+    const result = await request(token, 'values:batchGet', { query, signal });
+    return { result, extended };
   }
-  return request(token, 'values:batchGet', { query, signal });
+  try {
+    return await read(true);
+  } catch (error) {
+    if (error.status !== 400) throw error;
+    return read(false);
+  }
 }
 
 const CLAIM_COLUMNS = { guestName: 'B', dishName: 'D', course: 'E', kitchenNeeds: 'F', servings: 'J', dietary: 'K' };
@@ -265,6 +315,7 @@ export function createHubSheets({ keys, onData, onStatus, onSessionReset }) {
   let writing;
   let pending;
   let pendingBaseline;
+  let recipeAttempt;
   let needsFreshRead = false;
   let accessRecheck = false;
   let notice = googleConfigured ? 'Loading Google authorization…' : 'Google Sheets setup is incomplete.';
@@ -303,6 +354,7 @@ export function createHubSheets({ keys, onData, onStatus, onSessionReset }) {
     snapshot = undefined;
     pending = undefined;
     pendingBaseline = undefined;
+    recipeAttempt = undefined;
     needsFreshRead = false;
     accessRecheck = false;
     authenticating = false;
@@ -463,6 +515,118 @@ export function createHubSheets({ keys, onData, onStatus, onSessionReset }) {
     }
   }
 
+  async function saveRecipe(draft) {
+    if (!draft || !validSession() || session.mode !== 'edit' || writing || pending || accessRecheck) {
+      return { state: 'error', message: 'Sign in with edit access and finish any pending edit before saving.' };
+    }
+    if (recipeAttempt && recipeAttempt.id !== draft.id) {
+      return { state: 'blocked', message: 'Resolve the previous recipe import before starting another one.' };
+    }
+    const active = session;
+    const retrying = Boolean(recipeAttempt);
+    abortRead();
+    const controller = new AbortController();
+    const { signal } = controller;
+    writing = controller;
+    const current = () => session === active && validSession() && !accessRecheck && !signal.aborted;
+    const unresolved = () => ({ state: 'pending', message: 'Google Sheets has not confirmed this import. Keep this page open and use Check and retry.' });
+    const conflict = () => ({ state: 'blocked', message: 'The import records disagree. Give the organizer the import ID shown here to investigate.' });
+    const saved = () => {
+      recipeAttempt = undefined;
+      notice = 'Recipe added to Google Sheets.';
+      return { state: 'saved' };
+    };
+    async function inspect(latest) {
+      const marker = await request(active.token, 'developerMetadata/' + recipeAttempt.metadataId, { signal })
+        .catch(error => {
+          if (error.status !== 404) throw error;
+          return undefined;
+        });
+      if (!current()) return;
+      const state = reconcileRecipe(recipeAttempt, latest, marker);
+      if (state !== 'conflict' || !marker || latest.recipeImport.rawMenu.has(draft.id)) return state;
+      // A delayed batch can commit between the values read and the marker read.
+      const newer = await refresh({ priority: true });
+      return current() && newer?.recipeImport.ready ? reconcileRecipe(recipeAttempt, newer, marker) : undefined;
+    }
+    emit();
+    try {
+      const latest = await refresh({ priority: true });
+      if (!current() || !latest) return recipeAttempt ? unresolved() : { state: 'error', message: 'Could not refresh Google Sheets. Try again.' };
+      if (!latest.recipeImport.ready) {
+        return recipeAttempt ? unresolved() : { state: 'error', message: 'The organizer needs to finish the recipe import setup in Google Sheets.' };
+      }
+      const review = reviewRecipe(draft.recipe, draft.target, draft.choices, latest);
+      if (recipeAttempt) {
+        const state = await inspect(latest);
+        if (state === 'recorded') return saved();
+        if (state === 'conflict') return conflict();
+        if (state !== 'absent') return unresolved();
+        if (review.rows.some(row => row.requested && !row.matched)) {
+          return { state: 'blocked', message: 'A reused grocery row changed during this import. Give the organizer the import ID shown here.' };
+        }
+        if (review.signature !== draft.signature) {
+          return { state: 'retry-review', message: 'The Sheet changed. Review the updated checklist status and warnings, then confirm the retry.' };
+        }
+      } else {
+        if (review.signature !== draft.signature || review.rows.some(row => row.requested && !row.matched)) {
+          return { state: 'review', message: 'The Sheet changed. Review the updated grocery choices before saving.' };
+        }
+        const operation = await prepareRecipeOperation(draft, review);
+        if (!current()) return { state: 'error', message: 'The Google session changed. Sign in again to save.' };
+        if (reconcileRecipe(operation, latest) !== 'absent') return conflict();
+        const details = await request(active.token, '', {
+          query: new URLSearchParams({ fields: 'sheets(properties(sheetId,title))' }), signal,
+        });
+        if (!current()) return { state: 'error', message: 'The Google session changed. Sign in again to save.' };
+        const sheetIds = Object.fromEntries((details?.sheets ?? []).map(({ properties }) => [properties?.title, properties?.sheetId]));
+        if (![RECIPE_TAB, 'Menu_Servings', 'Grocery_Checks'].every(tab => Number.isInteger(sheetIds[tab]) && sheetIds[tab] >= 0)) {
+          return { state: 'error', message: 'Google Sheets did not return the recipe import tabs.' };
+        }
+        recipeAttempt = { ...operation, body: recipeAppendRequest(operation, sheetIds) };
+      }
+      let rejected;
+      try {
+        await request(active.token, ':batchUpdate', { method: 'POST', body: recipeAttempt.body, signal });
+      } catch (error) {
+        if (error.status === 401) throw error;
+        rejected = error.status;
+        if (rejected === 403 && current()) active.mode = 'view';
+      }
+      if (!current()) return unresolved();
+      const confirmed = await refresh({ priority: true });
+      if (rejected === 403 && current() && confirmed) {
+        notice = 'Google denied the import. Ask the organizer to check Editor access and Sheet protections.';
+      }
+      if (!current() || !confirmed?.recipeImport.ready) return unresolved();
+      const state = await inspect(confirmed);
+      if (state === 'recorded') return saved();
+      if (state === 'conflict') return conflict();
+      if (!retrying && state === 'absent' && [400, 403].includes(rejected)) {
+        recipeAttempt = undefined;
+        return {
+          state: 'error',
+          message: rejected === 403
+            ? notice
+            : 'Google rejected the import. Ask the organizer to check the tab layout and Sheet protections.',
+        };
+      }
+      if (rejected === 403) {
+        return { state: 'pending', message: notice + ' Keep the import ID for organizer review.' };
+      }
+      return unresolved();
+    } catch (error) {
+      if (error.status === 401 && session === active) reset('Your Google session expired. Sign in again.');
+      return recipeAttempt ? unresolved() : { state: 'error', message: 'Could not start the import. Refresh the Sheet and try again.' };
+    } finally {
+      if (writing === controller) {
+        writing = undefined;
+        emit();
+        if (accessRecheck) void refresh({ priority: true });
+      }
+    }
+  }
+
   function discard() {
     if (!pending || writing) return;
     pending = undefined;
@@ -493,6 +657,7 @@ export function createHubSheets({ keys, onData, onStatus, onSessionReset }) {
     connect,
     refresh: () => refresh({ manual: true }),
     save,
+    saveRecipe,
     discard,
     disconnect: () => reset('Signed out of Event Hub.'),
     editToken: () => validSession() && !authenticating && !accessRecheck && session.mode === 'edit' ? session.token : undefined,

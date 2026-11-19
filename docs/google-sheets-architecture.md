@@ -1,6 +1,6 @@
 # Event Hub on GitHub Pages with Google Sheets
 
-GitHub Pages serves the hub over HTTPS. Google Identity Services (GIS) gives the browser a short-lived access token, and the Sheets API reads and writes a single owner-managed spreadsheet. The original hub supplies recipe instructions, ingredient IDs, and timeline text. The spreadsheet is authoritative for dish names, serving targets, signup records, grocery checkoffs, and prep completion. The four hub screens appear after their Sheet data passes validation.
+GitHub Pages serves the hub over HTTPS. Google Identity Services (GIS) gives the browser a short-lived access token, and the Sheets API reads and writes a single owner-managed spreadsheet. The fixed catalog supplies the original recipes and timeline text. Sheets also stores [guest recipe imports](recipe-import.md). The spreadsheet is authoritative for dish names, serving targets, signup records, grocery checkoffs, and prep completion. The four hub screens appear after their Sheet data passes validation.
 
 ## Access and sign-in
 
@@ -13,7 +13,7 @@ GitHub Pages serves the hub over HTTPS. Google Identity Services (GIS) gives the
 
 ## Spreadsheet contract
 
-The owner seeds one header row per tab. Protect those headers and the preseeded key columns in `Menu_Servings`, `Grocery_Checks`, and `Prep_Checklist`. Leave the signup data columns writable by invited Editors so append can create complete rows. Reserve structural changes for the owner. Load the four ranges with `spreadsheets.values.batchGet` and `UNFORMATTED_VALUE`. Disable saves if headers or fixed keys are missing, malformed, or duplicated. Resolve fixed-row writes by the keys returned in the latest validated read. Use `RAW` for all writes.
+The owner seeds one header row per tab. Protect those headers and the preseeded key columns in `Menu_Servings`, `Grocery_Checks`, and `Prep_Checklist`. Leave the signup data columns writable by invited Editors so append can create complete rows. Reserve structural changes for the owner. Load the four ranges with `spreadsheets.values.batchGet` and `UNFORMATTED_VALUE`. Disable saves if headers or fixed keys are missing, malformed, or duplicated. Resolve fixed-row writes by the keys returned in the latest validated read. Use `RAW` for value writes and explicit cell types for recipe imports.
 
 | Tab | Columns, in order | Write behavior |
 | --- | --- | --- |
@@ -28,7 +28,7 @@ Use UTC ISO 8601 timestamps for display and coordination, with last successful w
 
 | Area | Pencil edit | Trash action | Create or restore |
 | --- | --- | --- | --- |
-| Menu | Dish name and target servings | Removes the dish and its ingredient quantities from the active plan | Restore with an explicit serving target |
+| Menu | Dish name and target servings | Removes the dish and its ingredient quantities from the active plan | Import a validated JSON recipe or restore with an explicit serving target |
 | Potluck | Guest, dish, course, servings, kitchen needs, and dietary tags | Withdraws the signup and retains its Sheet row | Add a new signup |
 | Grocery | Shopping check status | Excludes the item from the shopping list | Restore with an explicit check status |
 | Prep | Completion status | Excludes the step from the timeline | Restore with an explicit completion status |

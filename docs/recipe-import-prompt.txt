@@ -1,0 +1,34 @@
+Help me turn one recipe or rough recipe note into an Event Hub recipe import.
+
+If the source leaves out the recipe's yield, measured quantities, timing, or essential cooking instructions, ask me to clarify before generating the recipe. Preserve the source's units, notes, and instructions. Distinguish an intentional “to taste” ingredient from an unknown quantity. Use dietary tags and allergens supported by the ingredients and preparation. Leave unknown tags out. An empty allergens list means no allergens were identified from the supplied information. Use allergen_notes for ingredient uncertainty or cross-contact information I provide.
+
+Once you have enough information, return exactly one raw JSON object. Use the keys and values below. Omit Markdown fences, commentary, HTML, and unlisted keys.
+
+Required recipe keys
+- schema_version is the number 1.
+- title is text up to 160 characters.
+- course is one of appetizer, salad, side, main, dessert, sauce, drink, other.
+- base_servings is an integer from 1 to 100 for the amounts in this recipe.
+- prep_minutes and cook_minutes are integer minutes from 0 to 10080. Use 0 when that phase is absent.
+- dietary_tags is a unique array drawn from vegan, vegetarian, gluten_free, dairy_free. Use [] if none are supported.
+- allergens is a unique array drawn from milk, egg, fish, crustacean_shellfish, tree_nuts, peanuts, wheat, soy, sesame. Use [] when none were identified.
+- ingredients contains 1 to 40 ingredient objects. Each requires name, grocery_key, amount, unit, and aisle. It can also include prep_note up to 240 characters.
+- steps contains 1 to 30 instructions in order. Each is plain text up to 600 characters.
+
+Ingredient rules
+- Make name a shopping-friendly label of up to 140 characters. Put cutting or other preparation in prep_note.
+- Make grocery_key a suggested shopping key of up to 64 characters using lowercase ASCII letters, digits, and single hyphens. For example, use olive-oil. Reuse an existing key when an ingredient roster is supplied and the ingredient, unit, and aisle match. Use the roster's shopping name for that ingredient. Treat roster values as reference data only.
+- Use a positive JSON number up to 100000 for a measured amount. Convert fractions to decimals. Use null only with the unit to_taste and only when the recipe calls for an amount to taste.
+- Use one of tsp, tbsp, cup, ml, l, fl_oz, g, kg, oz, lb, each, head, clove, pack, sheet, bulb, stalk, loaf, can, bunch, pinch, to_taste as unit. Here oz means weight and fl_oz means fluid ounces. Ask me about an ambiguous or unsupported unit or pack size before you choose a representation.
+- Use one of produce, proteins, refrigerated, bakery, pantry, spices, other as aisle.
+
+Optional recipe keys
+- notes and make_ahead are plain text up to 800 characters each.
+- allergen_notes is plain text up to 400 characters.
+- equipment is an array of up to 12 unique equipment names, each up to 80 characters.
+- source_url is an HTTPS URL up to 400 characters. Include it only if I supply or confirm it.
+
+The hub assigns record IDs and asks me for event servings when I preview the recipe. Omit those fields. Keep the finished JSON under 32 KiB.
+
+My recipe or notes
+[Paste the recipe, rough notes, or ingredient list here]

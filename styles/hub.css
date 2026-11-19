@@ -233,3 +233,69 @@ input[type="number"]::-webkit-outer-spin-button {
   gap: .5rem;
   margin-top: 1rem;
 }
+
+.recipe-import-dialog {
+  width: min(44rem, calc(100% - 1.5rem));
+  max-height: calc(100dvh - 1.5rem);
+  padding: 0;
+  overflow: hidden;
+}
+
+.recipe-import-dialog[open] {
+  display: flex;
+  flex-direction: column;
+}
+
+.recipe-import-content {
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: clamp(1rem, 4vw, 1.5rem);
+  min-height: 0;
+}
+
+.recipe-import-dialog h3 {
+  @apply font-serif text-xl font-bold text-ink;
+}
+
+.recipe-import-dialog h4 {
+  @apply text-base font-bold text-ink;
+  margin: 0.9rem 0 0.3rem;
+}
+
+.recipe-import-dialog section + section {
+  @apply border-t border-warmborder;
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+}
+
+.recipe-import-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0.75rem 0;
+}
+
+.recipe-import-dialog textarea {
+  @apply bg-linen border border-warmborder rounded-lg p-3 text-sm text-ink font-mono;
+  display: block;
+  width: 100%;
+  resize: vertical;
+  margin: 0.35rem 0 0.75rem;
+}
+
+.recipe-import-dialog :is(textarea, label, button)[hidden] { display: none; }
+.recipe-import-dialog #recipe-target { width: 8rem; margin: 0.3rem 0; }
+.recipe-import-dialog #recipe-matches > div { @apply border-t border-warmborder; padding: 0.6rem 0; }
+.recipe-import-dialog #recipe-matches label { margin-bottom: 0.35rem; }
+.recipe-import-dialog #recipe-preview :is(p, li) { @apply text-sm; overflow-wrap: anywhere; }
+.recipe-import-dialog #recipe-preview ul { padding-left: 1.4rem; list-style: disc; }
+.recipe-import-dialog #recipe-preview ol { padding-left: 1.4rem; list-style: decimal; }
+.recipe-import-dialog #recipe-preview a { @apply text-accent underline text-sm; }
+.recipe-import-dialog .recipe-import-status { white-space: pre-wrap; overflow-wrap: anywhere; }
+.recipe-import-dialog .recipe-import-reference { @apply text-xs text-ink-muted; overflow-wrap: anywhere; }
+.recipe-import-dialog .recipe-import-footer {
+  @apply bg-linen border-t border-warmborder;
+  margin: 0;
+  padding: 0.75rem clamp(1rem, 4vw, 1.5rem);
+  flex: none;
+}

@@ -2,16 +2,11 @@ import { RECIPES, PREP_TIMELINE } from './hub-catalog.js';
 import { createHubSheets } from './hub-sheets.js';
 import { createFeedback } from './feedback.js';
 import { createRecordDialog } from './record-dialog.js';
+import { AISLE_NAMES, legacyGroceryRoster } from './recipe-contract.js';
+import { createRecipeImportDialog } from './recipe-import-dialog.js';
 
 // Supermarket Aisles Ordering
-const AISLE_ORDER = [
-  'Produce',
-  'Meat & Plant-Based Proteins',
-  'Dairy & Vegan Fridge',
-  'Bakery & Bread',
-  'Pantry & Oils',
-  'Spices & Seasonings'
-];
+const AISLE_ORDER = Object.values(AISLE_NAMES);
 
 const AISLE_ICONS = {
   'Produce': '🥬',
@@ -41,10 +36,27 @@ let hasData = false;
 let pendingSignup;
 let openRecipeId;
 let sharedViewKey;
+let currentSnapshot;
 let menuRefreshDeferred = false;
 let connection = {};
 const element = id => document.getElementById(id);
 const recordDialog = createRecordDialog();
+const recipeImportDialog = createRecipeImportDialog({
+  getSnapshot: () => currentSnapshot,
+  saveRecipe: draft => cloud.saveRecipe(draft),
+  formatAmount: formatIngredientAmount,
+  onOpenGroceries: () => {
+    switchTab('grocery');
+    element('grocery-search-input').focus();
+  },
+  onSaved: id => {
+    state.dietFilter = 'all';
+    renderMenuTab();
+    syncControls();
+    (document.querySelector(`[data-recipe-id="${id}"] h3`) ?? element('open-recipe-import')).focus();
+    showToast('Recipe added to the menu.');
+  },
+});
 const planRecipes = () => state.recipes.filter(recipe => state.servings[recipe.id] !== null);
 
 /**
@@ -84,6 +96,7 @@ function formatFraction(value) {
 
   // If within tolerance of a clean culinary fraction
   if (minDiff <= 0.035) {
+    if (whole === 0 && best.val === 0) return String(Number(value.toPrecision(3)));
     if (best.str === 'WHOLE_UP') {
       return String(whole + 1);
     }
@@ -96,10 +109,21 @@ function formatFraction(value) {
   return Number(rounded.toFixed(2)).toString();
 }
 
+function formatBatchMultiplier(multiplier) {
+  return String(Number(multiplier.toFixed(1)) || Number(multiplier.toFixed(2)));
+}
+
+function formatIngredientAmount(amount, unit, factor = 1) {
+  if (amount === null) return 'To taste';
+  const displayUnit = unit === 'fl_oz' ? 'fl oz' : unit;
+  return `${formatFraction(amount * factor)} ${displayUnit}`;
+}
+
 /**
  * Smart supermarket package / volume conversion hints for aggregated grocery items
  */
 function getConversionHint(groceryId, totalAmount, unit) {
+  if (totalAmount === null) return '';
   if (unit === 'tbsp' && totalAmount >= 8) {
     const cups = totalAmount / 16;
     if (groceryId === 'vegan-butter' || groceryId === 'unsalted-butter') {
@@ -135,7 +159,7 @@ function getConversionHint(groceryId, totalAmount, unit) {
 }
 
 /**
- * Aggregate identical ingredients across all 7 recipes using live serving multipliers
+ * Aggregate identical ingredients across active recipes using live serving multipliers
  */
 function aggregateGroceries() {
   const map = new Map();
@@ -146,19 +170,20 @@ function aggregateGroceries() {
 
     recipe.ingredients.forEach(ing => {
       if (state.checkedGrocery[ing.groceryId] === null) return;
-      const scaledAmt = ing.amount * multiplier;
+      const scaledAmt = ing.amount === null ? null : ing.amount * multiplier;
       if (!map.has(ing.groceryId)) {
+        const canonical = currentSnapshot.recipeImport.roster.get(ing.groceryId);
         map.set(ing.groceryId, {
           groceryId: ing.groceryId,
-          name: ing.name,
-          unit: ing.unit,
-          aisle: ing.aisle,
-          totalAmount: 0,
+          name: canonical.name,
+          unit: recipe.imported ? canonical.unit : ing.unit,
+          aisle: AISLE_NAMES[canonical.aisle],
+          totalAmount: scaledAmt === null ? null : 0,
           sources: []
         });
       }
       const entry = map.get(ing.groceryId);
-      entry.totalAmount += scaledAmt;
+      if (scaledAmt !== null) entry.totalAmount += scaledAmt;
       entry.sources.push({
         recipeId: recipe.id,
         recipeTitle: recipe.title,
@@ -319,7 +344,7 @@ function previewServings(recipeId, value) {
   const recipe = state.recipes.find(entry => entry.id === recipeId);
   const target = servingCount(value);
   if (!recipe || target === undefined) return;
-  const multiplier = (target / recipe.baseServings).toFixed(1).replace(/\.0$/, '');
+  const multiplier = formatBatchMultiplier(target / recipe.baseServings);
   element(`multiplier-badge-${recipeId}`).textContent = `${target} servings • ${multiplier}x batch`;
   element(`ingredient-preview-${recipeId}`).innerHTML = buildIngredientPreviewHTML(recipe, target);
   const number = element(`serving-input-${recipeId}`);
@@ -341,7 +366,7 @@ function updateRecipeServings(recipeId, value, original) {
   void cloud.save({ kind: 'menu', values: { [recipeId]: servings }, baseline })
     .finally(() => {
       renderMenuTab();
-      if (openRecipeId && state.servings[openRecipeId] === null) closeRecipeModal();
+      if (openRecipeId && state.servings[openRecipeId] == null) closeRecipeModal();
   else if (openRecipeId) openRecipeModal(openRecipeId, true);
       syncControls();
     });
@@ -350,11 +375,11 @@ function updateRecipeServings(recipeId, value, original) {
 function buildIngredientPreviewHTML(recipe, targetServings) {
   const mult = targetServings / recipe.baseServings;
   return recipe.ingredients.slice(0, 4).map(ing => {
-    const amtStr = formatFraction(ing.amount * mult);
+    const amtStr = formatIngredientAmount(ing.amount, ing.unit, mult);
     return `
       <li class="flex items-baseline justify-between gap-2 text-xs py-1 border-b border-warmborder/50 last:border-b-0">
         <span class="text-ink-muted truncate">${escapeHtml(ing.name.split('(')[0].trim())}</span>
-        <span class="font-semibold text-ink whitespace-nowrap">${amtStr} ${escapeHtml(ing.unit)}</span>
+        <span class="font-semibold text-ink whitespace-nowrap">${escapeHtml(amtStr)}</span>
       </li>
     `;
   }).join('');
@@ -385,8 +410,8 @@ function renderMenuTab() {
 
   const filters = [
     { id: 'all', label: `All Dishes (${dishes.length})` },
-    { id: 'vegan', label: `Vegan Only (${veganCount})` },
-    { id: 'gf', label: `Gluten-Free (${gfCount})` },
+    { id: 'vegan', label: `Tagged vegan (${veganCount})` },
+    { id: 'gf', label: `Tagged gluten-free (${gfCount})` },
     { id: 'mains', label: `Mains (${mainsCount})` }
   ];
 
@@ -415,7 +440,7 @@ function renderMenuTab() {
   const grid = document.getElementById('dish-cards-grid');
   grid.innerHTML = filteredRecipes.length ? filteredRecipes.map(recipe => {
     const target = state.servings[recipe.id];
-    const mult = (target / recipe.baseServings).toFixed(1).replace(/\.0$/, '');
+    const mult = formatBatchMultiplier(target / recipe.baseServings);
 
     const dietaryBadges = recipe.dietary.map(tag => `
       <span class="px-2.5 py-0.5 rounded-full text-[11px] font-semibold border ${getDietaryBadgeStyle(tag)}">
@@ -424,7 +449,7 @@ function renderMenuTab() {
     `).join('');
 
     return `
-      <article class="bg-linen border border-warmborder rounded-2xl p-5 shadow-warm hover:shadow-warm-lg transition-shadow flex flex-col justify-between">
+      <article data-recipe-id="${recipe.id}" class="bg-linen border border-warmborder rounded-2xl p-5 shadow-warm hover:shadow-warm-lg transition-shadow flex flex-col justify-between">
         <div class="space-y-3.5">
           <!-- Course & Timing Header -->
           <div class="flex flex-wrap items-center justify-between gap-2 text-xs">
@@ -439,11 +464,12 @@ function renderMenuTab() {
 
           <!-- Title & Dietary Badges -->
           <div class="space-y-2">
-            <h3 class="font-serif text-xl font-bold text-ink leading-snug">
+            <h3 tabindex="-1" class="font-serif text-xl font-bold text-ink leading-snug">
               ${escapeHtml(recipe.title)}
             </h3>
             <div class="flex flex-wrap gap-1.5">
               ${dietaryBadges}
+              ${recipe.imported && recipe.dietary.length ? '<span class="text-xs text-ink-muted self-center">Guest tags</span>' : ''}
             </div>
           </div>
 
@@ -536,7 +562,7 @@ function openRecipeModal(recipeId, noFocus = false) {
   function renderModalBody() {
     const target = state.servings[recipe.id];
     const mult = target / recipe.baseServings;
-    const multLabel = mult.toFixed(1).replace(/\.0$/, '');
+    const multLabel = formatBatchMultiplier(mult);
 
     const dietaryBadges = recipe.dietary.map(tag => `
       <span class="px-2.5 py-0.5 rounded-full text-xs font-semibold border ${getDietaryBadgeStyle(tag)}">
@@ -545,7 +571,7 @@ function openRecipeModal(recipeId, noFocus = false) {
     `).join('');
 
     const ingredientsListHTML = recipe.ingredients.map(ing => {
-      const scaledAmt = formatFraction(ing.amount * mult);
+      const scaledAmt = formatIngredientAmount(ing.amount, ing.unit, mult);
       return `
         <li class="flex items-start justify-between gap-4 py-2.5 border-b border-warmborder/60 last:border-b-0 text-sm">
           <div>
@@ -553,7 +579,7 @@ function openRecipeModal(recipeId, noFocus = false) {
             ${ing.prepNote ? `<span class="text-xs text-ink-muted block sm:inline sm:ml-1.5">— ${escapeHtml(ing.prepNote)}</span>` : ''}
           </div>
           <span class="font-bold text-accent whitespace-nowrap shrink-0">
-            ${scaledAmt} ${escapeHtml(ing.unit)}
+            ${escapeHtml(scaledAmt)}
           </span>
         </li>
       `;
@@ -567,6 +593,13 @@ function openRecipeModal(recipeId, noFocus = false) {
         <span>${escapeHtml(step)}</span>
       </li>
     `).join('');
+
+    const guestDetails = recipe.imported ? [
+      ['Guest dietary tags', recipe.dietary.join(', ') || 'None supplied'],
+      ['Guest allergen information', recipe.allergens.map(name => name.replaceAll('_', ' ')).join(', ') || 'None identified by contributor'],
+      ['Allergen notes', recipe.allergenNotes], ['Notes', recipe.notes],
+      ['Make ahead', recipe.makeAhead], ['Equipment', recipe.equipment?.join(', ')],
+    ].filter(([, value]) => value) : [];
 
     content.innerHTML = `
       <!-- Modal Header -->
@@ -616,6 +649,11 @@ function openRecipeModal(recipeId, noFocus = false) {
           </ul>
         </div>
 
+        ${guestDetails.length ? `<section class="text-sm space-y-2">
+          ${guestDetails.map(([label, value]) => `<p><strong>${label}</strong> · ${escapeHtml(value)}</p>`).join('')}
+          ${recipe.sourceUrl ? `<a class="text-accent underline" href="${escapeHtml(recipe.sourceUrl)}" target="_blank" rel="noopener noreferrer">Recipe source</a>` : ''}
+        </section>` : ''}
+
         <!-- Chef Instructions -->
         <div>
           <h3 class="font-serif text-xl font-bold text-ink mb-3">Chef Preparation Steps</h3>
@@ -649,11 +687,16 @@ function copySingleScaledRecipe(recipeId) {
   const mult = target / recipe.baseServings;
 
   const lines = [
-    `${recipe.title.toUpperCase()} (${target} Servings • ${(mult).toFixed(1).replace(/\.0$/, '')}x Batch)`,
-    `Dietary: ${recipe.dietary.join(', ')} | Prep: ${recipe.prepTime} | Cook: ${recipe.cookTime}`,
+    `${recipe.title.toUpperCase()} (${target} Servings • ${formatBatchMultiplier(mult)}x Batch)`,
+    `${recipe.imported ? 'Guest dietary tags' : 'Dietary'}: ${recipe.dietary.join(', ')} | Prep: ${recipe.prepTime} | Cook: ${recipe.cookTime}`,
+    ...(recipe.imported ? [
+      ['Guest allergen information', recipe.allergens.map(name => name.replaceAll('_', ' ')).join(', ') || 'None identified by contributor'],
+      ['Allergen notes', recipe.allergenNotes], ['Notes', recipe.notes], ['Make ahead', recipe.makeAhead],
+      ['Equipment', recipe.equipment?.join(', ')], ['Recipe source', recipe.sourceUrl],
+    ].filter(([, value]) => value).map(([label, value]) => label + ' · ' + value) : []),
     '',
     'SCALED INGREDIENTS:',
-    ...recipe.ingredients.map(ing => `- ${formatFraction(ing.amount * mult)} ${ing.unit} ${ing.name}${ing.prepNote ? ` (${ing.prepNote})` : ''}`),
+    ...recipe.ingredients.map(ing => `- ${formatIngredientAmount(ing.amount, ing.unit, mult)} ${ing.name}${ing.prepNote ? ` (${ing.prepNote})` : ''}`),
     '',
     'INSTRUCTIONS:',
     ...recipe.steps.map((s, i) => `${i + 1}. ${s}`)
@@ -717,7 +760,7 @@ function copyGroceryList() {
     lines.push(`${AISLE_ICONS[aisle] || '•'} ${aisle.toUpperCase()}`);
     items.forEach(item => {
       const check = state.checkedGrocery[item.groceryId] ? '[x]' : '[ ]';
-      const qty = `${formatFraction(item.totalAmount)} ${item.unit}`;
+      const qty = formatIngredientAmount(item.totalAmount, item.unit);
       const hint = getConversionHint(item.groceryId, item.totalAmount, item.unit);
       lines.push(`  ${check} ${qty} — ${item.name}${hint ? ` (${hint})` : ''}`);
     });
@@ -762,12 +805,12 @@ function renderGroceryTab() {
 
     const itemsHTML = aisleItems.map(item => {
       const isChecked = !!state.checkedGrocery[item.groceryId];
-      const qtyDisplay = `${formatFraction(item.totalAmount)} ${item.unit}`;
+      const qtyDisplay = formatIngredientAmount(item.totalAmount, item.unit);
       const conversionHint = getConversionHint(item.groceryId, item.totalAmount, item.unit);
 
       const sourceTags = item.sources.map(src => `
         <span class="inline-flex items-center px-2 py-0.5 rounded-md bg-parchment border border-warmborder/80 text-[11px] text-ink-muted">
-          ${escapeHtml(src.recipeTitle)}: <strong class="ml-1 text-ink">${formatFraction(src.amount)} ${escapeHtml(src.unit)}</strong>
+          ${escapeHtml(src.recipeTitle)}: <strong class="ml-1 text-ink">${escapeHtml(formatIngredientAmount(src.amount, src.unit))}</strong>
         </span>
       `).join('');
 
@@ -789,7 +832,7 @@ function renderGroceryTab() {
                 ${escapeHtml(item.name)}
               </label>
               <div class="text-right shrink-0">
-                <span class="text-sm font-bold text-accent">${qtyDisplay}</span>
+                <span class="text-sm font-bold text-accent">${escapeHtml(qtyDisplay)}</span>
                 ${conversionHint ? `<span class="block text-[11px] font-medium text-positive-dark">${conversionHint}</span>` : ''}
               </div>
             </div>
@@ -991,13 +1034,13 @@ function syncControls() {
 }
 
 const pendingLabels = {
-  grocery: new Map(RECIPES.flatMap(recipe => recipe.ingredients.map(item => [item.groceryId, item.name]))),
   prep: new Map(PREP_TIMELINE.flatMap(phase => phase.tasks.map(task => [task.id, task.text]))),
 };
 
 function recordLabel(kind, id) {
   if (kind === 'menu') return state.recipes.find(recipe => recipe.id === id)?.title ?? id;
   if (kind === 'potluck') return state.potluckItems.find(item => item.id === id)?.dishName ?? id;
+  if (kind === 'grocery') return currentSnapshot?.recipeImport.roster.get(id)?.name ?? id;
   return pendingLabels[kind].get(id) ?? id;
 }
 
@@ -1167,6 +1210,7 @@ function updateConnection(next) {
   element('hub-status').textContent = next.notice;
   showPendingValues(next.pendingValues);
   recordDialog.setConnection(next);
+  recipeImportDialog.setConnection(next);
   const signIn = element('hub-sign-in');
   signIn.hidden = next.mode === 'edit' && !next.authenticating;
   signIn.disabled = !next.available || next.busy || next.hasPending;
@@ -1183,6 +1227,7 @@ function updateConnection(next) {
 }
 
 function clearSessionDrafts() {
+  recipeImportDialog.reset();
   recordDialog.close({ restoreFocus: false });
   pendingSignup = undefined;
   state.grocerySearch = '';
@@ -1194,7 +1239,14 @@ function clearSessionDrafts() {
 }
 
 function updateSharedView(snapshot) {
+  currentSnapshot = snapshot;
   hasData = Boolean(snapshot);
+  const issues = element('recipe-import-issues');
+  const issueCount = snapshot?.recipeImport.issues.length ?? 0;
+  issues.hidden = !issueCount;
+  issues.textContent = issueCount ? 'Imported Sheet records need organizer review. ' +
+    snapshot.recipeImport.issues.slice(0, 5).join(', ') + (issueCount > 5 ? ', and others.' : '.') : '';
+  recipeImportDialog.setConnection(connection);
   if (!snapshot) {
     recordDialog.close({ restoreFocus: false });
     sharedViewKey = undefined;
@@ -1217,13 +1269,15 @@ function updateSharedView(snapshot) {
   }
 
   const values = kind => Object.fromEntries([...snapshot[kind]].map(([id, entry]) => [id, entry.value]));
-  const recipes = RECIPES.map(recipe => ({ ...recipe, title: snapshot.menu.get(recipe.id).title }));
+  const recipes = [...RECIPES, ...snapshot.recipeImport.imported].map(recipe => ({
+    ...recipe, title: snapshot.menu.get(recipe.id).title,
+  }));
   const menu = values('menu');
   const grocery = values('grocery');
   const prep = values('prep');
   const potluck = [...snapshot.potluck.values()].filter(claim => claim.status === 'claimed');
   const watchingServing = document.activeElement?.dataset.change === 'updateRecipeServings';
-  const key = JSON.stringify([recipes.map(recipe => recipe.title), menu, grocery, prep, potluck]);
+  const key = JSON.stringify([recipes, menu, grocery, prep, potluck, [...snapshot.recipeImport.roster]]);
 
   if (pendingSignup && snapshot.potluck.has(pendingSignup)) finishSignup();
   if (key === sharedViewKey) return;
@@ -1240,7 +1294,7 @@ function updateSharedView(snapshot) {
   if (state.activeTab === 'grocery') renderGroceryTab();
   if (state.activeTab === 'potluck') renderPotluckTab();
   if (state.activeTab === 'sync') renderSyncAndTimelineTab();
-  if (openRecipeId && state.servings[openRecipeId] === null) closeRecipeModal();
+  if (openRecipeId && state.servings[openRecipeId] == null) closeRecipeModal();
   else if (openRecipeId) openRecipeModal(openRecipeId, true);
   updateVisibility();
   syncControls();
@@ -1256,6 +1310,7 @@ const cloud = createHubSheets({
   keys: {
     menu: new Set(RECIPES.map(recipe => recipe.id)),
     grocery: new Set(RECIPES.flatMap(recipe => recipe.ingredients.map(ingredient => ingredient.groceryId))),
+    legacyRoster: legacyGroceryRoster(RECIPES),
     ingredientsByRecipe: new Map(RECIPES.map(recipe => [recipe.id, recipe.ingredients.map(item => item.groceryId)])),
     prep: new Set(PREP_TIMELINE.flatMap(phase => phase.tasks.map(task => task.id))),
   },

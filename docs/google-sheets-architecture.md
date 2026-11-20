@@ -32,7 +32,7 @@ Use UTC ISO 8601 timestamps for display and coordination, with last successful w
 | Potluck | Guest, dish, course, servings, kitchen needs, and dietary tags | Withdraws the signup and retains its Sheet row | Add a new signup |
 | Grocery | Shopping check status | Excludes the item from the shopping list | Restore with an explicit check status |
 | Prep | Completion status | Excludes the step from the timeline | Restore with an explicit completion status |
-| Feedback | Organizer manages ticket status in Sheets | Organizer handles ticket removal in Sheets | Send a ticket from the hub |
+| Feedback | Open a ticket to edit its status and shared notes | Organizer handles ticket removal in Sheets | Send a ticket from the hub |
 
 Fixed catalog rows retain their protected IDs on removal. A blank value in the existing status or target column represents an excluded row. Recipe instructions, ingredient definitions, and prep task wording live in the site catalog.
 
@@ -48,7 +48,7 @@ ticket_id	created_at	category	summary	details	status
 
 The form opens on the feedback message. The collapsed **Details** controls let guests change the default **Suggest a Change** type or provide a summary. When the summary is blank, the hub derives it from the first line of the message. The form explains that anyone with Sheet access can read submissions. It does not request a name or email. Feedback uses the same Google session as the hub. It validates the support tab independently and remains available if a hub tab needs correction.
 
-The form appends a row with `status=open` and displays the ticket ID on confirmation. The organizer filters the ticket tab by status and updates tickets to `in_progress` or `closed` directly in Sheets. Status ownership is a convention for this shared Sheet. If retries produce more than one row with the same ticket ID, use that ID as one ticket.
+The form appends a row with `status=open` and displays the ticket ID on confirmation. The ten newest unique tickets appear below the form with their summaries. Select a ticket to read its details and edit the status and shared notes with Sheet Editor access. The list shows **New** for `open`, **Seen It!** for `seen`, **On It!** for `in_progress`, and **Done!** for `closed`. Shared notes are Google Sheets cell notes on the ticket’s status cell. People with Sheet access can read them. Reopen the feedback tab or use the hub’s Refresh button to see changes made in Sheets. If retries produce more than one row with the same ticket ID, the hub opens the first matching row.
 
 ## Local development
 

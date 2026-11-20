@@ -93,6 +93,119 @@
   margin-bottom: 1rem;
 }
 
+.feedback-tickets {
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgb(var(--color-border));
+}
+
+.feedback-tickets h3 {
+  margin: 0 0 .4rem;
+  font-size: 1.125rem;
+  font-weight: 700;
+}
+
+.feedback-tickets p,
+.feedback-ticket-list {
+  margin: 0;
+  font-size: .9rem;
+}
+
+.feedback-tickets p {
+  color: rgb(var(--color-muted));
+}
+
+.feedback-ticket-list {
+  padding: 0;
+  list-style: none;
+}
+
+.feedback-card .feedback-ticket-trigger {
+  display: flex;
+  flex-wrap: wrap;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: .35rem .75rem;
+  padding: .65rem .35rem;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-weight: inherit;
+  text-align: left;
+}
+
+.feedback-card .feedback-ticket-trigger:hover:not(:disabled) {
+  background: rgb(var(--color-accent-light));
+}
+
+.feedback-ticket-list li + li {
+  border-top: 1px solid rgb(var(--color-border));
+}
+
+.feedback-ticket-summary {
+  flex: 1 1 12rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.feedback-ticket-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+  padding: .2rem .55rem;
+  border-radius: 999px;
+  background: #f0ebe5;
+  color: #54483c;
+  font-size: .8rem;
+  font-weight: 700;
+}
+
+.feedback-ticket-badge[data-status="seen"] {
+  background: rgb(var(--color-accent-light));
+  color: rgb(var(--color-accent-dark));
+}
+
+.feedback-ticket-badge[data-status="in_progress"] {
+  background: #faedd5;
+  color: #654407;
+}
+
+.feedback-ticket-badge[data-status="closed"] {
+  background: #e3eee3;
+  color: #2b5137;
+}
+
+#feedback-ticket-details,
+#feedback-ticket-title {
+  overflow-wrap: anywhere;
+}
+
+#feedback-ticket-details {
+  white-space: pre-wrap;
+}
+
+.feedback-ticket-control {
+  display: grid;
+  gap: .2rem;
+}
+
+#feedback-ticket-notes {
+  width: 100%;
+  padding: .45rem .6rem;
+  border: 1px solid rgb(var(--color-control-border));
+  border-radius: .4rem;
+  background: rgb(var(--color-surface));
+  font-weight: 400;
+  resize: vertical;
+}
+
+#feedback-ticket-sharing {
+  margin: 0;
+  color: rgb(var(--color-muted));
+  font-size: .875rem;
+}
+
 .controls-button {
   min-height: 2.75rem;
   padding: .5rem .8rem;

@@ -1201,8 +1201,10 @@ function updateVisibility() {
   element('kpi-pills').hidden = !hasData;
   element('hub-nav').hidden = !hasData;
   element('hub-data').hidden = !hasData;
-  element('hub-feedback').hidden = !connection.mode || connection.authenticating ||
+  const feedbackHidden = !connection.mode || connection.authenticating ||
     (hasData && state.activeTab !== 'feedback');
+  element('hub-feedback').hidden = feedbackHidden;
+  feedback.setVisible(!feedbackHidden);
 }
 
 function updateConnection(next) {
@@ -1324,7 +1326,10 @@ for (const button of document.querySelectorAll('.nav-tab-btn')) {
 }
 
 element('hub-sign-in').addEventListener('click', () => cloud.connect());
-element('hub-refresh').addEventListener('click', () => cloud.refresh());
+element('hub-refresh').addEventListener('click', () => {
+  void cloud.refresh();
+  void feedback.refreshTickets();
+});
 element('hub-disconnect').addEventListener('click', () => cloud.disconnect());
 element('hub-retry').addEventListener('click', async () => {
   if (await cloud.save() && pendingSignup) finishSignup();

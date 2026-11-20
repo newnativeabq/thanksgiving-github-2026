@@ -342,8 +342,38 @@
           <p id="feedback-status" role="status"></p>
           <noscript><p>Enable JavaScript to send feedback.</p></noscript>
         </form>
+        <section class="feedback-tickets" aria-labelledby="feedback-tickets-heading">
+          <h3 id="feedback-tickets-heading">Recent feedback</h3>
+          <p id="feedback-tickets-message" role="status"></p>
+          <ul id="feedback-tickets" class="feedback-ticket-list" role="list" hidden></ul>
+        </section>
       </section>
   </main>
+
+  <dialog id="feedback-ticket-dialog" class="record-dialog" aria-labelledby="feedback-ticket-title">
+    <form id="feedback-ticket-form">
+      <h2 id="feedback-ticket-title"></h2>
+      <p id="feedback-ticket-details"></p>
+      <fieldset id="feedback-ticket-fields" disabled>
+        <div class="feedback-ticket-control">
+          <label for="feedback-ticket-state">Status</label>
+          <select id="feedback-ticket-state">
+            <option value="" disabled>Choose a status</option>
+          </select>
+        </div>
+        <div class="feedback-ticket-control">
+          <label for="feedback-ticket-notes">Shared notes</label>
+          <textarea id="feedback-ticket-notes" rows="4" maxlength="2000" aria-describedby="feedback-ticket-sharing"></textarea>
+        </div>
+        <p id="feedback-ticket-sharing">People with access to the event Sheet can read these notes.</p>
+      </fieldset>
+      <p id="feedback-ticket-message" role="status"></p>
+      <div class="record-buttons">
+        <button type="button" id="feedback-ticket-close" class="controls-button">Close</button>
+        <button type="submit" id="feedback-ticket-save" class="controls-button controls-primary" disabled>Save changes</button>
+      </div>
+    </form>
+  </dialog>
 
   <dialog id="record-dialog" class="record-dialog" aria-labelledby="record-title">
     <form id="record-form">
